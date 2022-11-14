@@ -1,183 +1,86 @@
-import dataclasses
+from __future__ import annotations
+
 import logging
-from collections import namedtuple, deque, defaultdict
-from typing import Deque, Any, List, Iterable, TypeVar, Tuple
-
-from . import currentProgram, getInstructionAt
-from .pcode import Op, Variable
-
-from ghidra.app.decompiler import DecompileOptions
-from ghidra.app.decompiler import DecompInterface
-from ghidra.util.task import ConsoleTaskMonitor
+from enum import Enum, auto
+from typing import TypeVar, Tuple, Generator
 
 
-import pygraphviz as pgv
-
-
-logger = logging.getLogger(__name__)
-
-
-def decompile(func, program=None):
-    monitor = ConsoleTaskMonitor()
-    ifc = DecompInterface()
-    options = DecompileOptions()
-    ifc.setOptions(options)
-
-    program = program or currentProgram
-
-    ifc.openProgram(program)
-
-    res = ifc.decompileFunction(func, 60, monitor)
-
-    return res
-
-
-class BasicBlock:
-    """Wrap the ghidra's basic block representation."""
-    def __init__(self, pcodeblock):
-        self.start = pcodeblock.getStart()
-        self.end = pcodeblock.getStop()
-
-        self._block = pcodeblock
-
-    def __str__(self):
-        return '@{}\n\n{}'.format(self.start, "\n".join([str(_) for _ in self.pcodes()]))
-
-    # __members, __eq__ and __hash__ are necessary in order
-    # to make this class hashable and be able to compare elements
-    # for example in a dictionary
-    def __members(self) -> Tuple[Any, Any]:
-        return self.start, self.end
-
-    def __eq__(self, other):
-        if type(self) == type(other):
-            return self.__members() == other.__members()
-        else:
-            return False
-
-    def __hash__(self):
-        return hash(self.__members())
-
+class LoggerMixin:
     @property
-    def ins(self):
-        return [self.__class__(self._block.getIn(_)) for _ in range(self._block.getInSize())]
+    def logger(self):
+        if not hasattr(self, '_logger') or not self._logger:
+            self._logger = logging.getLogger(
+                "{}.{}".format(self.__module__, self.__class__.__name__)
+            )
 
-    @property
-    def outs(self) -> List['BasicBlock']:
-        return [self.__class__(self._block.getOut(_)) for _ in range(self._block.getOutSize())]
+        return self._logger
 
-    @property
-    def true(self):
-        return self.outs[1] if len(self.outs) > 1 else None
 
-    @property
-    def false(self):
-        return self.outs[0] if len(self.outs) > 0 else None
-
-    def instructions(self):
-        inst = getInstructionAt(self.start)
-
-        while inst and inst.getAddress() <= self.end:
-            yield inst
-
-            inst = inst.getNext()
-
-    def _raw_pcodes(self):
-        for inst in self.instructions():
-            for op in inst.getPcode():
-                yield Op(op)
-
-    def _pcodes(self):
-        """Return the elaborated Pcodes from the basic blocks.
-
-        If you want the raw pcodes (i.e. without the pre-analysis from
-        ghidra itself) you should call raw_pcodes()."""
-        it = self._block.getIterator()
-
-        for op in it:
-            yield Op(op)
-
-    def pcodes(self, raw: bool = False):
-        if raw:
-            return self._raw_pcodes()
-        else:
-            return self._pcodes()
+class NodeType(Enum):
+    NEW = auto()
+    OLD = auto()
+    ANCESTOR = auto()
 
 
 T = TypeVar("T")
 
 
-def traverse(graph: T) -> Iterable[T]:
-    """Traverse a "generic" directed graph"""
+def traverse(node: T, visited=None, ancestors=None) -> Generator[Tuple[NodeType, T], None, None]:
+    """Traverse a "generic" directed graph.
 
-    visited = {}
+    We want something interesting from this traversal algorithm: we want
+    to know if a child is an already encountered one and also if it's one
+    of our ancestors (so that we know we are element of a loop).
 
-    queue: Deque[T] = deque()
+    The basic block from ghidra have at most two child, creating a binary tree
+    of sort (when a child is present is always left(?) and a child can point "backward");
+    we don't want to continue if the child is a node already encountered
+    but we want to know if is one of our ancestors.
 
-    queue.append(graph)
+    From a basic layout like the following
 
-    while queue:
-        block = queue.popleft()
-        visited[block] = True
+              <A>
+             /   \
+           <B>   <C>
+          /   \
+        <D>   <E>
 
-        yield block
+    we want to ordering (A, B, D, E, C) that is the pre-order traversal algorithm.
 
-        for child in block.outs:
-            if child not in visited:  # this is fragile, for a custom class you need to be careful
-                queue.append(child)
+    In our case one of the leaf node might be an already encountered node.
+
+    The elements in ancestors are the path to reach the current element.
+    """
+    # root node (and add to the ancestors)
+    # left node
+    # right node
+    # at the end remove the root node from the ancestors
+
+    # trivial case
+    if node is None:
+        return
+
+    visited = visited if visited is not None else {}
+    ancestors = ancestors if ancestors is not None else []
+
+    # first check is not an ancestor
+    if node in ancestors:
+        yield NodeType.ANCESTOR, node
+        return
+
+    # maybe already encountered
+    if node in visited:
+        yield NodeType.OLD, node
+        return
+
+    visited[node] = True
+    ancestors.append(node)
+
+    yield NodeType.NEW, node
+
+    for child in node.outs:
+        yield from traverse(child, visited=visited, ancestors=ancestors)
+
+    ancestors.pop()
 
 
-class CFG:
-    """Wrap the BasicBlock CFG in order to do operations."""
-    def __init__(self, starting_block: BasicBlock):
-        self._blocks = starting_block
-
-    def traverse(self) -> Iterable[BasicBlock]:
-        return traverse(self._blocks)
-
-    def build(self, raw=False):
-        variables = {}
-
-        def _get_name():
-            count = 0
-
-            while True:
-                yield "var%d" % count
-
-                count += 1
-
-        names = _get_name()
-
-        for block in self.traverse():
-            for op in block.pcodes(raw=raw):
-                print("op:", op)
-                inputs = op.inputs
-                output = op.output
-
-                logger.debug("inputs: %s", inputs)
-                logger.debug("output: %s", output)
-
-
-class Function:
-    """Wrap the representation of a function.
-
-    In ghidra there are two main representations, Function and HighFunction."""
-    def __init__(self, high_function):
-        self._high = high_function
-        self.cfg = CFG(BasicBlock(self._high.getBasicBlocks()[0]))  # TODO
-
-    def graphivz(self) -> None:
-        logger.info("graphivz for ")
-
-        cfg = pgv.AGraph(directed=True)
-        cfg.node_attr.update(shape="note")
-
-        for block in self.cfg.traverse():
-            logger.debug("block@%s", block.start)
-            for out in block.outs:
-                cfg.add_edge(block, out)
-
-        logger.debug(cfg)
-
-        cfg.layout('dot')
-        cfg.draw("cfg.png")
