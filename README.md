@@ -15,9 +15,9 @@ $$
 \begin{array} {rlll}
 \mathsf{S} & ::= & \mathsf{x = A} \\\\
   & |   & ; \\\\
-  & |   & \mathsf{{\bf if}\, (B)\, S} \\\\
-  & |   & \mathsf{{\bf if}\, (B)\, S\, {\bf else}\, S} \\\\
-  & |   & \mathsf{{\bf while}\, (B)\, S} \\\\
+  & |   & \mathsf{{\bf if}\\, (B)\\, S} \\\\
+  & |   & \mathsf{{\bf if}\\, (B)\\, S\\, {\bf else}\, S} \\\\
+  & |   & \mathsf{{\bf while}\\, (B)\\, S} \\\\
   & |   & \mathsf{\\{ Sl \\} }    \\\\
 \end{array}
 $$
