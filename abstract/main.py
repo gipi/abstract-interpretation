@@ -3,6 +3,7 @@ import sys
 
 from . import getGlobalFunctions, toAddr
 from .analysis.code import decompile, Function
+from .analysis.graph import graphivz
 
 
 if __name__ == '__main__':
@@ -26,7 +27,7 @@ if __name__ == '__main__':
     f = Function(high_func)
 
     if cmd == "graph":
-        f.graphivz()
+        graphivz(high_func.getFunction().getName(), f.cfg.get_head())
     elif cmd == "display":
         f.cfg.ops(raw=False)
     elif cmd == "loops":
