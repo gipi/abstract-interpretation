@@ -25,7 +25,7 @@ class NodeType(Enum):
 T = TypeVar("T")
 
 
-def traverse(node: T, visited=None, ancestors=None) -> Generator[Tuple[NodeType, T], None, None]:
+def traverse(node: T, visited=None, ancestors=None, childs = lambda _: _.outs) -> Generator[Tuple[NodeType, T], None, None]:
     """Traverse a "generic" directed graph.
 
     We want something interesting from this traversal algorithm: we want
@@ -78,8 +78,8 @@ def traverse(node: T, visited=None, ancestors=None) -> Generator[Tuple[NodeType,
 
     yield NodeType.NEW, node
 
-    for child in node.outs:
-        yield from traverse(child, visited=visited, ancestors=ancestors)
+    for child in childs(node):
+        yield from traverse(child, visited=visited, ancestors=ancestors, childs=childs)
 
     ancestors.pop()
 

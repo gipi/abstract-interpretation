@@ -7,7 +7,14 @@ abstract interpretation") while reverse engineering.
 This library uses ghidra as a "backend" to extract the control flow
 graph information and attempts to rebuild the code structure like
 the ghidra's own decompiler (this because ghidra doesn't expose APIs
-to extract the structure of the code but only its CFG).
+to extract the structure of the code but only its CFG, at least, not
+easily).
+
+**Note:** it uses ``ghidra_bridge`` to communicate with ghidra itself
+and it's very slow.
+
+**Note:** it's a very early stage of development, without proper design
+decisions, do not expect much.
 
 For starter we are going to reconstruct the following "language"
 

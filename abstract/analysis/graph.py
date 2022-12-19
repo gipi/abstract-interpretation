@@ -6,11 +6,10 @@ import logging
 from collections import defaultdict, deque
 from enum import Flag, auto
 from functools import cached_property
-from typing import Tuple, Dict, MutableMapping, Any, List, Protocol, Set, Optional
+from typing import Tuple, Dict, MutableMapping, Any, List, Protocol, Set
 
 import pygraphviz as pgv
 
-from ..pcode import Op
 from ..utils import traverse, NodeType, LoggerMixin
 
 
@@ -61,10 +60,6 @@ class BasicBlock(LoggerMixin):
     def __hash__(self):
         return hash(self.__members())
 
-    def set_code(self, block):
-        # TODO: is it a problem for GC (since block references this object)?
-        self._code = block
-
     @cached_property
     def ins(self) -> List['BasicBlock']:
         return [self.__class__(self._block.getIn(_)) for _ in range(self.n_ins)]
@@ -92,7 +87,7 @@ class BasicBlock(LoggerMixin):
     def _raw_pcodes(self):
         for inst in self.instructions():
             for op in inst.getPcode():
-                yield Op(op)
+                yield op
 
     def _pcodes(self):
         """Return the elaborated Pcodes from the basic blocks.
@@ -102,7 +97,8 @@ class BasicBlock(LoggerMixin):
         it = self._block.getIterator()
 
         for op in it:
-            yield Op(op)
+            self.logger.debug(op)
+            yield op
 
     def pcodes(self, raw: bool = False):
         if raw:
@@ -122,7 +118,8 @@ EdgeClassification = MutableMapping[Tuple[CFGNode, CFGNode], EdgeType]
 Forest = List[CFGNode]
 
 
-def DFS(v: CFGNode, edges: EdgeClassification, index: int, num: Dict[CFGNode, int], mark: Dict[CFGNode, int], loops: Set[CFGNode]):
+def DFS(v: CFGNode, edges: EdgeClassification, index: int, num: Dict[CFGNode, int],
+        mark: Dict[CFGNode, int], loops: Set[CFGNode]) -> None:
     """Depth first search algorithm to find the "depth first spanning forest".
 
     Take in mind that the classification of the vertices depends on the ordering of the nodes themselves
@@ -156,7 +153,7 @@ def classify(head: CFGNode) -> Tuple[Forest, EdgeClassification, Set[CFGNode]]:
     num: Dict[CFGNode, int] = defaultdict(int)
     mark: Dict[CFGNode, int] = defaultdict(int)
     forest = []
-    loops = set()
+    loops: Set[CFGNode] = set()
 
     index = 0  # initialize a variable for the index
 
@@ -177,12 +174,17 @@ CFGPathToNodes = Dict[str, List[CFGNode]]
 
 @dataclasses.dataclass
 class CFGLoop:
+    """Terse representation of the head of a while loop."""
     head: CFGNode
     body: CFGNode
     exit: CFGNode
+    path: str
 
 
-def explore(head: CFGNode, paths: CFGNodeToPaths, nodes: CFGPathToNodes, loops: List[CFGLoop], prefix: str = ""):
+CFGLoops = List[CFGLoop]
+
+
+def explore(head: CFGNode, paths: CFGNodeToPaths, nodes: CFGPathToNodes, loops: CFGLoops, prefix: str = ""):
     """Recursively build all the binary paths of the graph.
 
     The idea here is that, since every node of a CFG has at most two possible paths
@@ -218,11 +220,17 @@ def explore(head: CFGNode, paths: CFGNodeToPaths, nodes: CFGPathToNodes, loops: 
             # we use the first different digit after the prefix
             # to know which child is the body
             direction = int(prefix[overlap:overlap + 1])
+            # we save the shortest path that enters the body
+            # so to recognize immediately what path reaches
+            # a "break" statement
+            path_body = prefix[: overlap + 1]
             loops.append(
                 CFGLoop(
                     head,
                     head.outs[direction],
-                    head.outs[~direction & 1]),
+                    head.outs[~direction & 1],
+                    path_body,
+                ),
             )
 
         return
