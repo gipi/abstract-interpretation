@@ -354,6 +354,16 @@ class GhidraProvider(Provider, LoggerMixin):
 
             return variable
 
+        if (symbol := high.getSymbol()) and (name := symbol.getName()):
+            if name in self._registry_named:
+                return self._registry_named[name]
+
+            variable = Variable(name, data_type)
+
+            self._registry_named[name] = variable
+
+            return variable
+
         # the last chance that is something interesting is
         # 2. by the stack register
         if addr_space == AddressSpace.REGISTER and (offset == self.get_stack_pointer().getOffset()):
@@ -406,6 +416,18 @@ class GhidraProvider(Provider, LoggerMixin):
         # be aware that HighConstant have getName() returning None :)
         if (name := high.getName()) != 'UNNAMED' and name:
             self.logger.info("< named variable ('%s')", name)
+            return True
+
+        if (symbol := high.getSymbol()) and (name := symbol.getName()):
+            self.logger.info("< named symbol ('%s')", name)
+
+            if symbol.isParameter():
+                offset = high.getOffset()
+                self.logger.info("<  this has offset %d", offset)
+
+                if offset != -1:
+                    self.logger.info("< storage doesn't match")
+
             return True
 
         # the only cases where an unnamed variable is terminal
@@ -486,7 +508,12 @@ class GhidraProvider(Provider, LoggerMixin):
             # check if it's a terminal, otherwise
             # try recursively to build an expression
             # by the defining PcodeOp
-            arg = self.do_translate_op(arg.getDef()) if not self.is_varnode_terminal(arg) else self.variable(arg)
+            if not self.is_varnode_terminal(arg):
+                if arg.getDef() is None:
+                    raise ValueError("Unexpected, we cannot find the terminal")
+                arg = self.do_translate_op(arg.getDef())
+            else:
+                arg = self.variable(arg)
 
             args.append(arg)
 
