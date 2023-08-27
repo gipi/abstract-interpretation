@@ -1,0 +1,18 @@
+# who the fuck is using a 80 character-wide terminal, am I right?
+line-length = 120
+
+# see here <https://beta.ruff.rs/docs/rules/> for all the categories
+select = [
+    "E", # errors
+    "F", # pyflaks
+    "D", # pydocstyle
+    "S", # flake8-bandit
+]
+
+ignore = [
+    "D105", # undocumented-magic-method (D105)
+]
+
+[pydocstyle]
+# we are using the google convention mainly for the enforcing of docstrings
+convention = "google"
